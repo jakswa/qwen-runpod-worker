@@ -1,4 +1,4 @@
-FROM ghcr.io/ggml-org/llama.cpp:server-cuda
+FROM ghcr.io/ggml-org/llama.cpp:server-cuda13
 
 RUN pip3 install runpod requests
 
