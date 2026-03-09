@@ -46,8 +46,8 @@ def start_server():
         "--flash-attn",
         "--jinja",
     ]
-    server_proc = subprocess.Popen(cmd)
-    for _ in range(120):
+    server_proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT)
+    for _ in range(300):  # 5 min — 20GB model load from network volume takes time
         try:
             r = requests.get(f"{SERVER_URL}/health", timeout=2)
             if r.status_code == 200:
