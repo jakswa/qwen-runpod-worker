@@ -46,8 +46,18 @@ def start_server():
         "--flash-attn",
         "--jinja",
     ]
-    server_proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT)
-    for _ in range(300):  # 5 min — 20GB model load from network volume takes time
+    log_file = open("/tmp/llama-server.log", "w")
+    server_proc = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
+    for i in range(300):  # 5 min — 20GB model load from network volume takes time
+        if i % 15 == 0:
+            # Flush llama-server log to stdout every 15s so RunPod captures it
+            log_file.flush()
+            try:
+                with open("/tmp/llama-server.log") as f:
+                    tail = f.read()[-2000:]
+                print(f"[llama-server log @ {i}s]\n{tail}", flush=True)
+            except Exception as e:
+                print(f"[log read error: {e}]", flush=True)
         try:
             r = requests.get(f"{SERVER_URL}/health", timeout=2)
             if r.status_code == 200:
