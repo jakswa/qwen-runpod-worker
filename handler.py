@@ -1,10 +1,11 @@
+import glob
+import os
 import runpod
 import subprocess
 import requests
 import time
 import sys
 
-MODEL_PATH = "/runpod-volume/models/qwen3.5-35b/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
 SERVER_URL = "http://127.0.0.1:8080"
 CTX_SIZE = 32768   # drop to 16384 if KV cache OOM on 4090
 N_GPU_LAYERS = 99
@@ -12,19 +13,38 @@ N_GPU_LAYERS = 99
 server_proc = None
 
 
+def find_model():
+    """Locate the GGUF file regardless of RunPod's cache path structure."""
+    patterns = [
+        # RunPod HuggingFace cache (when model URL provided in endpoint config)
+        "/runpod-volume/huggingface-cache/hub/*Qwen3.5-35B-A3B*/**/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf",
+        # Manual network volume path (from deployment plan)
+        "/runpod-volume/models/qwen3.5-35b/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf",
+        # Fallback: any Q4_K_XL gguf on the volume
+        "/runpod-volume/**/*Q4_K_XL.gguf",
+    ]
+    for pattern in patterns:
+        matches = glob.glob(pattern, recursive=True)
+        if matches:
+            print(f"Found model at: {matches[0]}", flush=True)
+            return matches[0]
+    contents = os.listdir("/runpod-volume") if os.path.exists("/runpod-volume") else "volume not mounted"
+    raise FileNotFoundError(f"Model GGUF not found. /runpod-volume contents: {contents}")
+
+
 def start_server():
     global server_proc
+    model_path = find_model()
     cmd = [
-        "/app/llama-server",          # correct path in the official image
-        "--model", MODEL_PATH,
+        "/app/llama-server",
+        "--model", model_path,
         "--ctx-size", str(CTX_SIZE),
         "--n-gpu-layers", str(N_GPU_LAYERS),
         "--host", "127.0.0.1",
         "--port", "8080",
         "--parallel", "1",
-        "--flash-attn",               # enable for throughput; auto in latest builds but explicit is fine
-        "--jinja",                    # required for tool calling
-        # --cont-batching removed: now always-on default in recent llama.cpp
+        "--flash-attn",
+        "--jinja",
     ]
     server_proc = subprocess.Popen(cmd)
     for _ in range(120):
@@ -48,14 +68,12 @@ def is_server_alive():
 
 
 def handler(job):
-    # LiteLLM sends a standard OpenAI chat completions body as job["input"]
     job_input = job["input"]
 
     # Inject enable_thinking: false — Qwen3.5 defaults to thinking-on otherwise
     if "chat_template_kwargs" not in job_input:
         job_input["chat_template_kwargs"] = {"enable_thinking": False}
 
-    # Check server is still alive (catches post-startup crashes/OOMs)
     if not is_server_alive():
         return {"error": "llama-server is not responding — worker needs restart"}
 
@@ -67,7 +85,7 @@ def handler(job):
         )
         resp.raise_for_status()
         return resp.json()
-    except requests.exceptions.HTTPError as e:
+    except requests.exceptions.HTTPError:
         return {"error": f"llama-server error {resp.status_code}: {resp.text[:500]}"}
     except Exception as e:
         return {"error": str(e)}
