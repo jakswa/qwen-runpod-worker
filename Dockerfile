@@ -6,4 +6,5 @@ RUN pip3 install --break-system-packages runpod requests
 
 COPY handler.py /handler.py
 
-CMD ["python3", "/handler.py"]
+# Base image sets ENTRYPOINT to /app/llama-server — must override or CMD becomes llama-server args
+ENTRYPOINT ["python3", "/handler.py"]
