@@ -7,7 +7,7 @@ import time
 import sys
 
 SERVER_URL = "http://127.0.0.1:8080"
-CTX_SIZE = 32768   # drop to 16384 if KV cache OOM on 4090
+CTX_SIZE = 131072  # 128k; drop to 32768 if KV cache OOM on 4090
 N_GPU_LAYERS = 99
 
 server_proc = None
